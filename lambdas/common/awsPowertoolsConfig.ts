@@ -9,4 +9,5 @@ export enum MetricNames {
 
 export enum ServiceNames {
   metricsTest = 'metrics-test',
+  tracerTest = 'tracer-test',
 }

@@ -7,7 +7,7 @@ import {
   SingleValueWidget,
   Stats,
 } from 'aws-cdk-lib/aws-cloudwatch';
-import { LayerVersion, Runtime } from 'aws-cdk-lib/aws-lambda';
+import { LayerVersion, Runtime, Tracing } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Construct } from 'constructs';
 import {
@@ -16,7 +16,13 @@ import {
   ServiceNames,
 } from '../../lambdas/common/awsPowertoolsConfig';
 import { Queue } from 'aws-cdk-lib/aws-sqs';
-import { ManagedPolicy, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import {
+  Effect,
+  ManagedPolicy,
+  PolicyStatement,
+  Role,
+  ServicePrincipal,
+} from 'aws-cdk-lib/aws-iam';
 
 export class AwsPowertoolsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -28,6 +34,30 @@ export class AwsPowertoolsStack extends cdk.Stack {
       entry: 'lambdas/logging/loggingHandler.ts',
       functionName: 'loggingHandler',
     });
+
+    const tracingRole = new Role(this, 'tracing-role', {
+      assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+    });
+
+    tracingRole.addToPolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        resources: ['*'],
+        actions: ['xray:PutTraceSegments', 'xray:PutTelemetryRecords'],
+      })
+    );
+
+    new NodejsFunction(this, 'aws-powertools-tracer', {
+      runtime: Runtime.NODEJS_18_X,
+      handler: 'tracerHandler',
+      entry: 'lambdas/tracer/tracerHandler.ts',
+      functionName: 'tracerHandler',
+      // Enable X-Ray tracing for this lambda.
+      tracing: Tracing.ACTIVE,
+      role: tracingRole,
+    });
+
+    //#region Metrics
 
     const lambdaInsightsRole = new Role(this, 'lambda-insights-role', {
       assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
@@ -120,5 +150,7 @@ export class AwsPowertoolsStack extends cdk.Stack {
     dashboard.addWidgets(processedSingleValueWidget);
     dashboard.addWidgets(sqsWidget);
     dashboard.addWidgets(lambdaWidget);
+
+    //#endregion
   }
 }
